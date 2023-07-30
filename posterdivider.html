@@ -91,40 +91,34 @@ async function renderPreview1(page, canvas) {
 	context.strokeRect(rect2.x, rect2.y, rect2.width, rect2.height);
 }
 async function renderPreview2(page, sizePoster, sizePaper, marginPaper, canvas) {
-	const viewport = page.getViewport({ scale: 1 });
-	// console.log(viewport);
+	const context = canvas.getContext("2d");
+	const lineWidth = Math.min(canvas.width, canvas.height) / 400;
 	const rect = { x: 0, y: 0, width: canvas.width, height: canvas.height };
 	const margin = { left: canvas.width / 20, right: canvas.width / 20, top: canvas.height / 20, bottom: canvas.height / 20 };
 	const rect1 = RectMargin(rect, margin);
 	const rect2 = RectFit(rect1, sizePoster);
-	const transform = [rect2.width / viewport.width, 0, 0, rect2.height / viewport.height, rect2.x, rect2.y];
-	// console.log(transform);
-	const context = canvas.getContext("2d");
-	await page.render({ canvasContext: context, viewport, transform, background: canvas.style.backgroundColor }).promise;
+	if (page) {
+		const viewport = page.getViewport({ scale: 1 });
+		// console.log(viewport);
+		const transform = [rect2.width / viewport.width, 0, 0, rect2.height / viewport.height, rect2.x, rect2.y];
+		// console.log(transform);
+		await page.render({ canvasContext: context, viewport, transform, background: canvas.style.backgroundColor }).promise;
+	} else {
+		context.fillStyle = "gray";
+		context.fillRect(rect2.x, rect2.y, rect2.width, rect2.height);
+		context.strokeStyle = "black";
+		context.lineWidth = lineWidth * 2;
+		context.strokeRect(rect2.x, rect2.y, rect2.width, rect2.height);
+	}
 	const sizePaper1 = RectMargin(sizePaper, marginPaper);
 	const countX = Math.ceil(sizePoster.width / sizePaper1.width);
 	const countY = Math.ceil(sizePoster.height / sizePaper1.height);
 	// console.log(countX, countY);
-	const lineWidth = Math.min(canvas.width, canvas.height) / 200;
 	context.lineWidth = lineWidth;
 	const width = sizePaper.width * rect2.width / sizePoster.width;
 	const height = sizePaper.height * rect2.height / sizePoster.height;
 	const scale2X = rect2.width / sizePoster.width;
 	const scale2Y = rect2.height / sizePoster.height;
-	// red
-	for (let j = 0; j < countY; j++) {
-		for (let i = 0; i < countX; i++) {
-			let x = rect2.x - marginPaper.left * scale2X + i * sizePaper1.width * scale2X;
-			let y = rect2.y - marginPaper.top * scale2Y + j * sizePaper1.height * scale2Y;
-			if ((i + j) % 2 == 0) {
-				context.strokeStyle = "red";
-				context.strokeRect(x, y, width, height);
-			} else {
-				context.strokeStyle = "blue";
-			}
-		}
-	}
-	// blue
 	for (let j = 0; j < countY; j++) {
 		for (let i = 0; i < countX; i++) {
 			let x = rect2.x - marginPaper.left * scale2X + i * sizePaper1.width * scale2X;
@@ -133,8 +127,10 @@ async function renderPreview2(page, sizePoster, sizePaper, marginPaper, canvas) 
 				context.strokeStyle = "red";
 			} else {
 				context.strokeStyle = "blue";
-				context.strokeRect(x, y, width, height);
+				x += lineWidth;
+				y += lineWidth;
 			}
+			context.strokeRect(x, y, width, height);
 		}
 	}
 }
@@ -258,7 +254,7 @@ async function updatePreview() {
 		const count = countX * countY;
 		ePaperCount.value = count;
 	}
-	if (pageSrc && sizePoster && sizePaper && marginPaper) {
+	if (sizePoster && sizePaper && marginPaper) {
 		await renderPreview2(pageSrc, sizePoster, sizePaper, marginPaper, ePreview2);
 	}
 }
