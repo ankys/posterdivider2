@@ -28,7 +28,7 @@
 <div>
 プレビュー
 <label>推定出力枚数<input type="number" id="paper_count" min="0" disabled /></label>
-<input type="submit" value="出力" onclick="onsubmitOutput()" />
+<input type="submit" id="output" value="出力" onclick="onsubmitOutput()" />
 </div>
 <div>
 <canvas id="preview1" width="1920" height="1920" style="width:45%;background-color:silver;"></canvas>
@@ -190,6 +190,7 @@ const ePaperUnit = document.getElementById("paper_unit");
 const ePaperCount = document.getElementById("paper_count");
 const ePreview1 = document.getElementById("preview1");
 const ePreview2 = document.getElementById("preview2");
+const eOutput = document.getElementById("output");
 
 async function setupFile(blob) {
 	if (blob) {
@@ -257,6 +258,7 @@ async function updatePreview() {
 	if (sizePoster && sizePaper && marginPaper) {
 		await renderPreview2(pageSrc, sizePoster, sizePaper, marginPaper, ePreview2);
 	}
+	eOutput.disabled = !(pageSrc && sizePoster && sizePaper && marginPaper);
 }
 
 async function onchangeFile() {
