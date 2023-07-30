@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>PosterDivider</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.8.162/pdf.min.js"></script>
+<script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+<!-- <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.js"></script> -->
+</head>
+<body>
+<p>
+<div>
+<label><input type="file" id="file" accept=".pdf,application/pdf" onchange="onchangeFile()" /></label>
+</div>
+<div>
+<label>ページ番号<select id="page_num" disabled onchange="onchangePageNum()"><option selected>1</option></select></label>
+<label>サイズ<input type="number" id="src_width" disabled /><input type="number" id="src_height" disabled /><select id="src_unit" onchange="onchangeSrcUnit()"><option>mm</option><option>cm</option><option>in</option><option>pt</option></select></label>
+</div>
+<div>
+<label>ポスターのサイズ<select id="poster_size" onchange="onchangePosterSize()"><option value="custom">カスタム</option><option value="a0">A0</option><option value="a1">A1</option></select><input type="number" id="poster_width" min="0" onchange="onchangePosterWidth()" /><input type="number" id="poster_height" min="0" onchange="onchangePosterHeight()" /><select id="poster_unit" onchange="onchangePosterUnit()"><option>mm</option><option>cm</option><option>in</option><option>pt</option></select></label>
+<label><input type="checkbox" id="keep_ratio" checked onchange="onchangeKeepRatio()">縦横比を保持</label>
+</div>
+<div>
+<label>印刷用紙のサイズ<select id="paper_size" onchange="onchangePaperSize()"><option value="a4">A4</option><option value="a3">A3</option><option value="a5">A5</option></select></label><input type="number" id="paper_width" min="0" disabled onchange="onchangePaperWidth()" /><input type="number" id="paper_height" min="0" disabled onchange="onchangePaperHeight()" /><select id="paper_unit" onchange="onchangePaperUnit()"><option>mm</option><option>cm</option><option>in</option><option>pt</option></select></label>
+</div>
+</p>
+<p>
+<div>
+プレビュー
+<label>推定出力枚数<input type="number" id="paper_count" min="0" disabled /></label>
+<input type="submit" value="出力" onclick="onsubmitOutput()" />
+</div>
+<div>
+<canvas id="preview1" width="1920" height="1920" style="width:45%;background-color:silver;"></canvas>
+<canvas id="preview2" width="1920" height="1920" style="width:45%;background-color:silver;"></canvas>
+</div>
+</p>
+<p>PosterDivider v2.0.0a Copyright (c) 2023 Atsushi Nakayasu</p>
+<script>
+const mapUnit = {
+	"mm": 25.4 / 72,
+	"cm": 2.54 / 72,
+	"in": 1 / 72,
+	"pt": 1,
+};
+const mapSize = {
+	"a0": { width: 841 * 72 / 25.4, height: 1189 * 72 / 25.4 },
+	"a1": { width: 594 * 72 / 25.4, height: 841 * 72 / 25.4 },
+	"a2": { width: 420 * 72 / 25.4, height: 594 * 72 / 25.4 },
+	"a3": { width: 297 * 72 / 25.4, height: 420 * 72 / 25.4 },
+	"a4": { width: 210 * 72 / 25.4, height: 297 * 72 / 25.4 },
+	"a5": { width: 148 * 72 / 25.4, height: 210 * 72 / 25.4 },
+};
+// rectからmarginを引く
+function RectMargin(rect, margin) {
+	const x = rect.x + margin.left;
+	const y = rect.y + margin.top;
+	const width = rect.width - margin.left - margin.right;
+	const height = rect.height - margin.top - margin.bottom;
+	const rect2 = { x, y, width, height };
+	return rect2;
+}
+// sizeに相似で、長方形rectに内接する長方形rect2を返す
+function RectFit(rect, size) {
+	const [width, height] =
+		size.width / rect.width > size.height / rect.height ? 
+			[rect.width, rect.width * size.height / size.width] :
+			[rect.height * size.width / size.height, rect.height];
+	const x = rect.x + (rect.width - width) / 2;
+	const y = rect.y + (rect.height - height) / 2;
+	const rect2 = { x, y, width, height };
+	return rect2;
+}
+
+async function renderPreview1(page, canvas) {
+	const viewport = page.getViewport({ scale: 1 });
+	// console.log(viewport);
+	const rect = { x: 0, y: 0, width: canvas.width, height: canvas.height };
+	const margin = { left: canvas.width / 20, right: canvas.width / 20, top: canvas.height / 20, bottom: canvas.height / 20 };
+	const rect1 = RectMargin(rect, margin);
+	const rect2 = RectFit(rect1, viewport);
+	const transform = [rect2.width / viewport.width, 0, 0, rect2.height / viewport.height, rect2.x, rect2.y];
+	// console.log(transform);
+	const context = canvas.getContext("2d");
+	await page.render({ canvasContext: context, viewport, transform, background: canvas.style.backgroundColor }).promise;
+	// context.fillStyle = "green";
+	// context.fillRect(rect2.x, rect2.y, rect2.width, rect2.height);
+	context.strokeStyle = "black";
+	context.setLineDash([Math.min(canvas.width, canvas.height) / 20, Math.min(canvas.width, canvas.height) / 20]);
+	context.lineWidth = Math.min(canvas.width, canvas.height) / 100;
+	context.strokeRect(rect2.x, rect2.y, rect2.width, rect2.height);
+}
+async function renderPreview2(page, sizePoster, sizePaper, marginPaper, canvas) {
+	const viewport = page.getViewport({ scale: 1 });
+	// console.log(viewport);
+	const rect = { x: 0, y: 0, width: canvas.width, height: canvas.height };
+	const margin = { left: canvas.width / 20, right: canvas.width / 20, top: canvas.height / 20, bottom: canvas.height / 20 };
+	const rect1 = RectMargin(rect, margin);
+	const rect2 = RectFit(rect1, sizePoster);
+	const transform = [rect2.width / viewport.width, 0, 0, rect2.height / viewport.height, rect2.x, rect2.y];
+	// console.log(transform);
+	const context = canvas.getContext("2d");
+	await page.render({ canvasContext: context, viewport, transform, background: canvas.style.backgroundColor }).promise;
+	const sizePaper1 = RectMargin(sizePaper, marginPaper);
+	const countX = Math.ceil(sizePoster.width / sizePaper1.width);
+	const countY = Math.ceil(sizePoster.height / sizePaper1.height);
+	// console.log(countX, countY);
+	const lineWidth = Math.min(canvas.width, canvas.height) / 200;
+	context.lineWidth = lineWidth;
+	const width = sizePaper.width * rect2.width / sizePoster.width;
+	const height = sizePaper.height * rect2.height / sizePoster.height;
+	const scale2X = rect2.width / sizePoster.width;
+	const scale2Y = rect2.height / sizePoster.height;
+	// red
+	for (let j = 0; j < countY; j++) {
+		for (let i = 0; i < countX; i++) {
+			let x = rect2.x - marginPaper.left * scale2X + i * sizePaper1.width * scale2X;
+			let y = rect2.y - marginPaper.top * scale2Y + j * sizePaper1.height * scale2Y;
+			if ((i + j) % 2 == 0) {
+				context.strokeStyle = "red";
+				context.strokeRect(x, y, width, height);
+			} else {
+				context.strokeStyle = "blue";
+			}
+		}
+	}
+	// blue
+	for (let j = 0; j < countY; j++) {
+		for (let i = 0; i < countX; i++) {
+			let x = rect2.x - marginPaper.left * scale2X + i * sizePaper1.width * scale2X;
+			let y = rect2.y - marginPaper.top * scale2Y + j * sizePaper1.height * scale2Y;
+			if ((i + j) % 2 == 0) {
+				context.strokeStyle = "red";
+			} else {
+				context.strokeStyle = "blue";
+				context.strokeRect(x, y, width, height);
+			}
+		}
+	}
+}
+async function generatePDF(blob, sizePoster, sizePaper, marginPaper) {
+	const buf = await blob.arrayBuffer();
+	const pdf = await PDFLib.PDFDocument.load(buf);
+	const pageCount = pdf.getPageCount();
+	const page = pdf.getPage(0);
+	// pdfの長さの単位はポイント 1pt = 1/72 in = 25.4/72 mm
+	const sizePDF = page.getSize();
+	const scaleX = sizePoster.width / sizePDF.width;
+	const scaleY = sizePoster.height / sizePDF.height;
+	const sizePaper1 = RectMargin(sizePaper, marginPaper);
+	const countX = Math.ceil(sizePoster.width / sizePaper1.width);
+	const countY = Math.ceil(sizePoster.height / sizePaper1.height);
+	// console.log(countX, countY);
+	const pdf2 = await PDFLib.PDFDocument.create();
+	const pageEmb = await pdf2.embedPage(page);
+	for (let j = 0; j < countY; j++) {
+		for (let i = 0; i < countX; i++) {
+			const x = marginPaper.left - i * sizePaper1.width;
+			const y = marginPaper.top - sizePoster.height + (j + 1) * sizePaper1.height;
+			const page2 = pdf2.addPage();
+			page2.setSize(sizePaper.width, sizePaper.height);
+			page2.drawPage(pageEmb, { x, y, xScale: scaleX, yScale: scaleY });
+		}
+	}
+	const buf2 = await pdf2.save();
+	const blob2 = new Blob([buf2], { type: "application/pdf" });
+	return blob2;
+}
+
+let blobSrc = null;
+let pdfSrc = null;
+let numPages = null;
+let pageNum = null;
+let pageSrc = null;
+let sizeSrc = null;
+let sizePoster = null;
+let sizePaper = null;
+let marginPaper = null;
+
+const eFile = document.getElementById("file");
+const ePageNum = document.getElementById("page_num");
+const eSrcWidth = document.getElementById("src_width");
+const eSrcHeight = document.getElementById("src_height");
+const eSrcUnit = document.getElementById("src_unit");
+const ePosterSize = document.getElementById("poster_size");
+const ePosterWidth = document.getElementById("poster_width");
+const ePosterHeight = document.getElementById("poster_height");
+const ePosterUnit = document.getElementById("poster_unit");
+const eKeepRatio = document.getElementById("keep_ratio");
+const ePaperSize = document.getElementById("paper_size");
+const ePaperWidth = document.getElementById("paper_width");
+const ePaperHeight = document.getElementById("paper_height");
+const ePaperUnit = document.getElementById("paper_unit");
+const ePaperCount = document.getElementById("paper_count");
+const ePreview1 = document.getElementById("preview1");
+const ePreview2 = document.getElementById("preview2");
+
+async function setupFile(blob) {
+	if (blob) {
+		blobSrc = blob;
+		const buf = await blobSrc.arrayBuffer();
+		pdfSrc = await pdfjsLib.getDocument(buf).promise;
+		numPages = pdfSrc.numPages;
+	} else {
+		blobSrc = null;
+		pdfSrc = null;
+		numPages = null;
+	}
+	setupPageNum();
+}
+async function setupFileURL(url) {
+	const res = await fetch(url);
+	const blob = await res.blob();
+	await setupFile(blob);
+}
+function setupPageNum() {
+	ePageNum.innerHTML = "";
+	if (numPages !== null) {
+		for (let i = 0; i < numPages; i++) {
+			const option = new Option(i + 1);
+			if (i === 0) {
+				option.selected = true;
+			}
+			ePageNum.append(option);
+		}
+		ePageNum.disabled = false;
+		onchangePageNum();
+	} else {
+		const option = new Option(1);
+		option.selected = true;
+		ePageNum.append(option);
+		ePageNum.disabled = true;
+	}
+}
+function setupSrcSize() {
+	const unit = mapUnit[eSrcUnit.value];
+	eSrcWidth.value = Math.round(sizeSrc.width * unit);
+	eSrcHeight.value = Math.round(sizeSrc.height * unit);
+}
+function setupPosterSize() {
+	const unit = mapUnit[ePosterUnit.value];
+	ePosterWidth.value = Math.round(sizePoster.width * unit);
+	ePosterHeight.value = Math.round(sizePoster.height * unit);
+}
+function setupPaperSize() {
+	const unit = mapUnit[ePaperUnit.value];
+	ePaperWidth.value = Math.round(sizePaper.width * unit);
+	ePaperHeight.value = Math.round(sizePaper.height * unit);
+}
+async function updatePreview() {
+	if (pageSrc) {
+		await renderPreview1(pageSrc, ePreview1);
+	}
+	if (sizePoster && sizePaper && marginPaper) {
+		const sizePaper1 = RectMargin(sizePaper, marginPaper);
+		const countX = Math.ceil(sizePoster.width / sizePaper1.width);
+		const countY = Math.ceil(sizePoster.height / sizePaper1.height);
+		const count = countX * countY;
+		ePaperCount.value = count;
+	}
+	if (pageSrc && sizePoster && sizePaper && marginPaper) {
+		await renderPreview2(pageSrc, sizePoster, sizePaper, marginPaper, ePreview2);
+	}
+}
+
+async function onchangeFile() {
+	const files = eFile.files;
+	const file = files[0];
+	await setupFile(file);
+}
+async function onchangePageNum() {
+	const pageNumS = ePageNum.value;
+	pageNum = parseInt(pageNumS) - 1;
+	pageSrc = await pdfSrc.getPage(pageNum + 1);
+	const viewport = pageSrc.getViewport({ scale: 1 });
+	sizeSrc = viewport;
+	setupSrcSize();
+	await onchangePosterSize();
+	await updatePreview();
+}
+async function onchangeSrcUnit() {
+	setupSrcSize();
+}
+
+async function onchangePosterSize() {
+	if (ePosterSize.value === "custom") {
+		const width = sizePoster.width;
+		const height =
+			ePosterSize.value === "custom" && eKeepRatio.checked && sizeSrc ?
+				width * sizeSrc.height / sizeSrc.width : sizePoster.height;
+		sizePoster = { width, height };
+		eKeepRatio.disabled = false;
+		ePosterWidth.disabled = false;
+		ePosterHeight.disabled = false;
+	} else {
+		sizePoster = mapSize[ePosterSize.value];
+		eKeepRatio.disabled = true;
+		ePosterWidth.disabled = true;
+		ePosterHeight.disabled = true;
+	}
+	setupPosterSize();
+	await updatePreview();
+}
+async function onchangePosterWidth() {
+	const unit = mapUnit[ePosterUnit.value];
+	const width = parseFloat(ePosterWidth.value) / unit;
+	const height =
+		ePosterSize.value === "custom" && eKeepRatio.checked && sizeSrc ?
+			width * sizeSrc.height / sizeSrc.width : sizePoster.height;
+	sizePoster = { width, height };
+	setupPosterSize();
+	await updatePreview();
+}
+async function onchangePosterHeight() {
+	const unit = mapUnit[ePosterUnit.value];
+	const height = parseFloat(ePosterHeight.value) / unit;
+	const width =
+		ePosterSize.value === "custom" && eKeepRatio.checked && sizeSrc ?
+			height * sizeSrc.width / sizeSrc.height : sizePoster.width;
+	sizePoster = { width, height };
+	setupPosterSize();
+	await updatePreview();
+}
+async function onchangePosterUnit() {
+	setupPosterSize();
+}
+async function onchangeKeepRatio() {
+	if (eKeepRatio.checked && sizeSrc) {
+		const width = sizePoster.width;
+		const height =
+			ePosterSize.value === "custom" && eKeepRatio.checked && sizeSrc ?
+				width * sizeSrc.height / sizeSrc.width : sizePoster.height;
+		sizePoster = { width, height };
+		setupPosterSize();
+		await updatePreview();
+	}
+}
+async function onchangePaperSize() {
+	sizePaper = mapSize[ePaperSize.value];
+	setupPaperSize();
+	await updatePreview();
+}
+async function onchangePaperUnit() {
+	setupPaperSize();
+}
+async function onsubmitOutput() {
+	const blobOutput = await generatePDF(blobSrc, sizePoster, sizePaper, marginPaper);
+	const url = URL.createObjectURL(blobOutput);
+	window.open(url);
+}
+
+async function main() {
+	sizePoster = mapSize["a0"];
+	setupPosterSize();
+	await onchangePaperSize();
+	// 15mm
+	marginPaper = { left: 15*72/25.4, right: 15*72/25.4, top: 15*72/25.4, bottom: 15*72/25.4 };
+	await updatePreview();
+	// debug
+	// setupFileURL("work/a.pdf");
+}
+main();
+</script>
+</body>
+</html>
