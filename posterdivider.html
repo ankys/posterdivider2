@@ -362,7 +362,9 @@ async function main() {
 	marginPaper = { left: 15*72/25.4, right: 15*72/25.4, top: 15*72/25.4, bottom: 15*72/25.4 };
 	await updatePreview();
 	// debug
-	// setupFileURL("work/a.pdf");
+	if (location.hostname === "127.0.0.1") {
+		setupFileURL("work/a.pdf");
+	}
 }
 main();
 </script>
