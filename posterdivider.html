@@ -76,16 +76,22 @@ function RectFit(rect, size) {
 }
 
 async function renderPreview1(page, canvas) {
-	const viewport = page.getViewport({ scale: 1 });
-	// console.log(viewport);
+	const size = page.size;
+	// console.log(size);
 	const rect = { x: 0, y: 0, width: canvas.width, height: canvas.height };
 	const margin = { left: canvas.width / 20, right: canvas.width / 20, top: canvas.height / 20, bottom: canvas.height / 20 };
 	const rect1 = RectMargin(rect, margin);
-	const rect2 = RectFit(rect1, viewport);
-	const transform = [rect2.width / viewport.width, 0, 0, rect2.height / viewport.height, rect2.x, rect2.y];
-	// console.log(transform);
+	const rect2 = RectFit(rect1, size);
 	const context = canvas.getContext("2d");
-	await page.render({ canvasContext: context, viewport, transform, background: "white" }).promise;
+	context.clearRect(0, 0, canvas.width, canvas.height);
+	if (page.type === "image") {
+		context.drawImage(page.image, rect2.x, rect2.y, rect2.width, rect2.height);
+	} else if (page.type === "pdf-page") {
+		const viewport = page.viewport;
+		const transform = [rect2.width / size.width, 0, 0, rect2.height / size.height, rect2.x, rect2.y];
+		// console.log(transform);
+		await page.page.render({ canvasContext: context, viewport, transform, background: "white" }).promise;
+	}
 	context.strokeStyle = "black";
 	context.setLineDash([]);
 	context.lineWidth = Math.min(canvas.width, canvas.height) / 400;
@@ -99,17 +105,20 @@ async function renderPreview1(page, canvas) {
 }
 async function renderPreview2(page, sizePoster, sizePaper, marginPaper, canvas) {
 	const context = canvas.getContext("2d");
+	context.clearRect(0, 0, canvas.width, canvas.height);
 	const lineWidth = Math.min(canvas.width, canvas.height) / 400;
 	const rect = { x: 0, y: 0, width: canvas.width, height: canvas.height };
 	const margin = { left: canvas.width / 20, right: canvas.width / 20, top: canvas.height / 20, bottom: canvas.height / 20 };
 	const rect1 = RectMargin(rect, margin);
 	const rect2 = RectFit(rect1, sizePoster);
-	if (page) {
-		const viewport = page.getViewport({ scale: 1 });
+	if (page && page.type === "image") {
+		context.drawImage(page.image, rect2.x, rect2.y, rect2.width, rect2.height);
+	} else if (page && page.type === "pdf-page") {
+		const viewport = page.viewport;
 		// console.log(viewport);
 		const transform = [rect2.width / viewport.width, 0, 0, rect2.height / viewport.height, rect2.x, rect2.y];
 		// console.log(transform);
-		await page.render({ canvasContext: context, viewport, transform, background: "white" }).promise;
+		await page.page.render({ canvasContext: context, viewport, transform, background: "white" }).promise;
 	} else {
 		context.fillStyle = "gray";
 		context.fillRect(rect2.x, rect2.y, rect2.width, rect2.height);
@@ -171,8 +180,7 @@ async function generatePDF(blob, pageNum, sizePoster, sizePaper, marginPaper) {
 }
 
 let blobSrc = null;
-let pdfSrc = null;
-let numPages = null;
+let objectSrc = null;
 let pageNum = null;
 let pageSrc = null;
 let sizeSrc = null;
@@ -199,16 +207,54 @@ const ePreview1 = document.getElementById("preview1");
 const ePreview2 = document.getElementById("preview2");
 const eOutput = document.getElementById("output");
 
+function initializeImageSrc(image) {
+	const numPages = 1;
+	const getPage = async (pageNum) => {
+		const width = image.width;
+		const height = image.height;
+		const size = { width, height };
+		return { type: "image", image, size };
+	};
+	return { type: "image", image, numPages, getPage };
+}
+function initializePDFSrc(pdf) {
+	const numPages = pdf.numPages;
+	const getPage = async (pageNum) => {
+		const page = await pdf.getPage(pageNum + 1);
+		const viewport = page.getViewport({ scale: 1 });
+		return { type: "pdf-page", page, size: viewport, viewport };
+	};
+	return { type: "pdf", pdf, numPages, getPage };
+}
+async function loadSrc(blob) {
+	return new Promise((resolve, reject) => {
+		const url = URL.createObjectURL(blob);
+		const image = new Image();
+		image.src = url;
+		image.onload = async(event) => {
+			const src = initializeImageSrc(image);
+			resolve(src);
+		};
+		image.onerror = async(event) => {
+			const buf = await blob.arrayBuffer();
+			try {
+				const pdf = await pdfjsLib.getDocument({ data: buf, cMapUrl: urlCMap, cMapPacked: true }).promise;
+				const src = initializePDFSrc(pdf);
+				resolve(src);
+			} catch {
+				reject();
+			}
+		};
+	});
+}
+
 async function setupFile(blob) {
 	if (blob) {
 		blobSrc = blob;
-		const buf = await blobSrc.arrayBuffer();
-		pdfSrc = await pdfjsLib.getDocument({ data: buf, cMapUrl: urlCMap, cMapPacked: true }).promise;
-		numPages = pdfSrc.numPages;
+		objectSrc = await loadSrc(blobSrc);
 	} else {
 		blobSrc = null;
-		pdfSrc = null;
-		numPages = null;
+		objectSrc = null;
 	}
 	setupPageNum();
 }
@@ -219,7 +265,8 @@ async function setupFileURL(url) {
 }
 function setupPageNum() {
 	ePageNum.innerHTML = "";
-	if (numPages !== null) {
+	if (objectSrc) {
+		const numPages = objectSrc.numPages
 		for (let i = 0; i < numPages; i++) {
 			const option = new Option(i + 1);
 			if (i === 0) {
@@ -276,9 +323,8 @@ async function onchangeFile() {
 async function onchangePageNum() {
 	const pageNumS = ePageNum.value;
 	pageNum = parseInt(pageNumS) - 1;
-	pageSrc = await pdfSrc.getPage(pageNum + 1);
-	const viewport = pageSrc.getViewport({ scale: 1 });
-	sizeSrc = viewport;
+	pageSrc = await objectSrc.getPage(pageNum);
+	sizeSrc = pageSrc.size;
 	setupSrcSize();
 	await onchangePosterSize();
 	await updatePreview();
@@ -363,7 +409,9 @@ async function main() {
 	await updatePreview();
 	// debug
 	if (location.hostname === "127.0.0.1") {
-		setupFileURL("work/a.pdf");
+		// setupFileURL("work/a.pdf");
+		// setupFileURL("work/b.pdf");
+		setupFileURL("work/c.png");
 	}
 }
 main();
