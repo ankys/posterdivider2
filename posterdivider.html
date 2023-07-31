@@ -1,7 +1,8 @@
 <!DOCTYPE html>
-<html>
+<html lang="ja">
 <head>
 <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width">
 <title>PosterDivider</title>
 <script src="https://unpkg.com/pdfjs-dist@3.9.179/build/pdf.min.js"></script>
 <script src="https://unpkg.com/pdfjs-dist@3.9.179/build/pdf.worker.min.js"></script>
@@ -22,7 +23,7 @@
 <label><input type="checkbox" id="keep_ratio" checked onchange="onchangeKeepRatio()">縦横比を保持</label>
 </div>
 <div>
-<label>印刷用紙のサイズ<select id="paper_size" onchange="onchangePaperSize()"><option value="a4">A4</option><option value="a3">A3</option><option value="a5">A5</option></select></label><input type="number" id="paper_width" min="0" disabled onchange="onchangePaperWidth()" /><input type="number" id="paper_height" min="0" disabled onchange="onchangePaperHeight()" /><select id="paper_unit" onchange="onchangePaperUnit()"><option>mm</option><option>cm</option><option>in</option><option>pt</option></select></label>
+<label>印刷用紙のサイズ<select id="paper_size" onchange="onchangePaperSize()"><option value="a4">A4</option><option value="a3">A3</option><option value="a5">A5</option></select></label><input type="number" id="paper_width" min="0" disabled onchange="onchangePaperWidth()" /><input type="number" id="paper_height" min="0" disabled onchange="onchangePaperHeight()" /><select id="paper_unit" title="単位" onchange="onchangePaperUnit()"><option>mm</option><option>cm</option><option>in</option><option>pt</option></select></label>
 </div>
 </p>
 <p>
