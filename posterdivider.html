@@ -141,11 +141,11 @@ async function renderPreview2(page, sizePoster, sizePaper, marginPaper, canvas) 
 		}
 	}
 }
-async function generatePDF(blob, sizePoster, sizePaper, marginPaper) {
+async function generatePDF(blob, pageNum, sizePoster, sizePaper, marginPaper) {
 	const buf = await blob.arrayBuffer();
 	const pdf = await PDFLib.PDFDocument.load(buf);
 	const pageCount = pdf.getPageCount();
-	const page = pdf.getPage(0);
+	const page = pdf.getPage(pageNum);
 	// pdfの長さの単位はポイント 1pt = 1/72 in = 25.4/72 mm
 	const sizePDF = page.getSize();
 	const scaleX = sizePoster.width / sizePDF.width;
@@ -349,7 +349,7 @@ async function onchangePaperUnit() {
 	setupPaperSize();
 }
 async function onsubmitOutput() {
-	const blobOutput = await generatePDF(blobSrc, sizePoster, sizePaper, marginPaper);
+	const blobOutput = await generatePDF(blobSrc, pageNum, sizePoster, sizePaper, marginPaper);
 	const url = URL.createObjectURL(blobOutput);
 	window.open(url);
 }
