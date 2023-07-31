@@ -3,7 +3,8 @@
 <head>
 <meta charset="utf-8" />
 <title>PosterDivider</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.8.162/pdf.min.js"></script>
+<script src="https://unpkg.com/pdfjs-dist@3.9.179/build/pdf.min.js"></script>
+<script src="https://unpkg.com/pdfjs-dist@3.9.179/build/pdf.worker.min.js"></script>
 <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
 <!-- <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.js"></script> -->
 </head>
@@ -37,6 +38,7 @@
 </p>
 <p>PosterDivider v2.0.0a Copyright (c) 2023 Atsushi Nakayasu</p>
 <script>
+const urlCMap = "https://unpkg.com/pdfjs-dist@3.9.179/cmaps/";
 const mapUnit = {
 	"mm": 25.4 / 72,
 	"cm": 2.54 / 72,
@@ -82,7 +84,11 @@ async function renderPreview1(page, canvas) {
 	const transform = [rect2.width / viewport.width, 0, 0, rect2.height / viewport.height, rect2.x, rect2.y];
 	// console.log(transform);
 	const context = canvas.getContext("2d");
-	await page.render({ canvasContext: context, viewport, transform, background: canvas.style.backgroundColor }).promise;
+	await page.render({ canvasContext: context, viewport, transform, background: "white" }).promise;
+	context.strokeStyle = "black";
+	context.setLineDash([]);
+	context.lineWidth = Math.min(canvas.width, canvas.height) / 400;
+	context.strokeRect(rect2.x, rect2.y, rect2.width, rect2.height);
 	// context.fillStyle = "green";
 	// context.fillRect(rect2.x, rect2.y, rect2.width, rect2.height);
 	context.strokeStyle = "black";
@@ -102,14 +108,14 @@ async function renderPreview2(page, sizePoster, sizePaper, marginPaper, canvas) 
 		// console.log(viewport);
 		const transform = [rect2.width / viewport.width, 0, 0, rect2.height / viewport.height, rect2.x, rect2.y];
 		// console.log(transform);
-		await page.render({ canvasContext: context, viewport, transform, background: canvas.style.backgroundColor }).promise;
+		await page.render({ canvasContext: context, viewport, transform, background: "white" }).promise;
 	} else {
 		context.fillStyle = "gray";
 		context.fillRect(rect2.x, rect2.y, rect2.width, rect2.height);
-		context.strokeStyle = "black";
-		context.lineWidth = lineWidth * 2;
-		context.strokeRect(rect2.x, rect2.y, rect2.width, rect2.height);
 	}
+	context.strokeStyle = "black";
+	context.lineWidth = lineWidth;
+	context.strokeRect(rect2.x, rect2.y, rect2.width, rect2.height);
 	const sizePaper1 = RectMargin(sizePaper, marginPaper);
 	const countX = Math.ceil(sizePoster.width / sizePaper1.width);
 	const countY = Math.ceil(sizePoster.height / sizePaper1.height);
@@ -196,7 +202,7 @@ async function setupFile(blob) {
 	if (blob) {
 		blobSrc = blob;
 		const buf = await blobSrc.arrayBuffer();
-		pdfSrc = await pdfjsLib.getDocument(buf).promise;
+		pdfSrc = await pdfjsLib.getDocument({ data: buf, cMapUrl: urlCMap, cMapPacked: true }).promise;
 		numPages = pdfSrc.numPages;
 	} else {
 		blobSrc = null;
