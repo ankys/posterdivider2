@@ -172,6 +172,7 @@ async function generatePDF(page, sizePoster, sizePaper, marginPaper) {
 	const countY = Math.ceil(sizePoster.height / sizePaper1.height);
 	// console.log(countX, countY);
 	const pdf2 = await PDFLib.PDFDocument.create();
+	pdf2.setProducer("PosterDivider2");
 	let imageEmbed, pageEmbed;
 	if (page.type === "image") {
 		const image = page.image;
@@ -439,7 +440,8 @@ async function main() {
 	if (location.hostname === "127.0.0.1") {
 		// setupFileURL("work/a.pdf");
 		// setupFileURL("work/b.pdf");
-		setupFileURL("work/c.png");
+		// setupFileURL("work/c.png");
+		setupFileURL("work/d.svg");
 	}
 }
 main();
