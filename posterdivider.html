@@ -75,6 +75,18 @@ function RectFit(rect, size) {
 	return rect2;
 }
 
+async function getPngFromImage(image) {
+	return new Promise((resolve, reject) => {
+		const canvas = document.createElement("canvas");
+		canvas.width = image.width;
+		canvas.height = image.height;
+		const context = canvas.getContext("2d");
+		context.drawImage(image, 0, 0, canvas.width, canvas.height);
+		canvas.toBlob((blob) => {
+			resolve(blob);
+		}, "image/png");
+	});
+}
 async function renderPreview1(page, canvas) {
 	const size = page.size;
 	// console.log(size);
@@ -150,13 +162,9 @@ async function renderPreview2(page, sizePoster, sizePaper, marginPaper, canvas) 
 		}
 	}
 }
-async function generatePDF(blob, pageNum, sizePoster, sizePaper, marginPaper) {
-	const buf = await blob.arrayBuffer();
-	const pdf = await PDFLib.PDFDocument.load(buf);
-	const pageCount = pdf.getPageCount();
-	const page = pdf.getPage(pageNum);
+async function generatePDF(page, sizePoster, sizePaper, marginPaper) {
 	// pdfの長さの単位はポイント 1pt = 1/72 in = 25.4/72 mm
-	const sizePDF = page.getSize();
+	const sizePDF = page.size;
 	const scaleX = sizePoster.width / sizePDF.width;
 	const scaleY = sizePoster.height / sizePDF.height;
 	const sizePaper1 = RectMargin(sizePaper, marginPaper);
@@ -164,14 +172,27 @@ async function generatePDF(blob, pageNum, sizePoster, sizePaper, marginPaper) {
 	const countY = Math.ceil(sizePoster.height / sizePaper1.height);
 	// console.log(countX, countY);
 	const pdf2 = await PDFLib.PDFDocument.create();
-	const pageEmb = await pdf2.embedPage(page);
+	let imageEmbed, pageEmbed;
+	if (page.type === "image") {
+		const image = page.image;
+		const blob = await getPngFromImage(image);
+		const buf = await blob.arrayBuffer();
+		imageEmbed = await pdf2.embedPng(buf);
+	} else if (page.type === "pdf-page") {
+		const page2 = await page.getPage2();
+		pageEmbed = await pdf2.embedPage(page2);
+	}
 	for (let j = 0; j < countY; j++) {
 		for (let i = 0; i < countX; i++) {
 			const x = marginPaper.left - i * sizePaper1.width;
 			const y = marginPaper.top - sizePoster.height + (j + 1) * sizePaper1.height;
 			const page2 = pdf2.addPage();
 			page2.setSize(sizePaper.width, sizePaper.height);
-			page2.drawPage(pageEmb, { x, y, xScale: scaleX, yScale: scaleY });
+			if (page.type === "image") {
+				page2.drawImage(imageEmbed, { x, y, width: sizePoster.width, height: sizePoster.height });
+			} else if (page.type === "pdf-page") {
+				page2.drawPage(pageEmbed, { x, y, xScale: scaleX, yScale: scaleY });
+			}
 		}
 	}
 	const buf2 = await pdf2.save();
@@ -217,12 +238,19 @@ function initializeImageSrc(image) {
 	};
 	return { type: "image", image, numPages, getPage };
 }
-function initializePDFSrc(pdf) {
+function initializePDFSrc(pdf, blob) {
 	const numPages = pdf.numPages;
 	const getPage = async (pageNum) => {
 		const page = await pdf.getPage(pageNum + 1);
 		const viewport = page.getViewport({ scale: 1 });
-		return { type: "pdf-page", page, size: viewport, viewport };
+		const getPage2 = async () => {
+			const buf = await blob.arrayBuffer();
+			const pdf2 = await PDFLib.PDFDocument.load(buf);
+			const page2 = pdf2.getPage(pageNum);
+			console.log(page2);
+			return page2;
+		};
+		return { type: "pdf-page", page, size: viewport, viewport, getPage2 };
 	};
 	return { type: "pdf", pdf, numPages, getPage };
 }
@@ -239,7 +267,7 @@ async function loadSrc(blob) {
 			const buf = await blob.arrayBuffer();
 			try {
 				const pdf = await pdfjsLib.getDocument({ data: buf, cMapUrl: urlCMap, cMapPacked: true }).promise;
-				const src = initializePDFSrc(pdf);
+				const src = initializePDFSrc(pdf, blob);
 				resolve(src);
 			} catch {
 				reject();
@@ -395,7 +423,7 @@ async function onchangePaperUnit() {
 	setupPaperSize();
 }
 async function onsubmitOutput() {
-	const blobOutput = await generatePDF(blobSrc, pageNum, sizePoster, sizePaper, marginPaper);
+	const blobOutput = await generatePDF(pageSrc, sizePoster, sizePaper, marginPaper);
 	const url = URL.createObjectURL(blobOutput);
 	window.open(url);
 }
