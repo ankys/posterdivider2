@@ -12,7 +12,7 @@
 <body>
 <p>
 <div>
-<label><input type="file" id="file" accept=".pdf,application/pdf" onchange="onchangeFile()" /></label>
+<label><input type="file" id="file" accept=".pdf,application/pdf,.jpg,.jpeg,.png,.gif,.webp,.svg,image/*" onchange="onchangeFile()" /></label>
 </div>
 <div>
 <label>ページ番号<select id="page_num" disabled onchange="onchangePageNum()"><option selected>1</option></select></label>
@@ -45,6 +45,9 @@ const mapUnit = {
 	"cm": 2.54 / 72,
 	"in": 1 / 72,
 	"pt": 1,
+};
+const mapUnit2 = {
+	"px": 1,
 };
 const mapSize = {
 	"a0": { width: 841 * 72 / 25.4, height: 1189 * 72 / 25.4 },
@@ -206,6 +209,7 @@ let objectSrc = null;
 let pageNum = null;
 let pageSrc = null;
 let sizeSrc = null;
+let unitSizeSrc = null;
 let sizePoster = null;
 let sizePaper = null;
 let marginPaper = null;
@@ -281,9 +285,16 @@ async function setupFile(blob) {
 	if (blob) {
 		blobSrc = blob;
 		objectSrc = await loadSrc(blobSrc);
+		if (objectSrc.type === "image") {
+			unitSizeSrc = mapUnit2;
+		} else if (objectSrc.type === "pdf") {
+			unitSizeSrc = mapUnit;
+		}
+		setupSrcUnit();
 	} else {
 		blobSrc = null;
 		objectSrc = null;
+		unitSizeSrc = null;
 	}
 	setupPageNum();
 }
@@ -312,8 +323,15 @@ function setupPageNum() {
 		ePageNum.disabled = true;
 	}
 }
+function setupSrcUnit() {
+	eSrcUnit.innerHTML = "";
+	for (const value in unitSizeSrc) {
+		const option = new Option(value);
+		eSrcUnit.append(option);
+	}
+}
 function setupSrcSize() {
-	const unit = mapUnit[eSrcUnit.value];
+	const unit = unitSizeSrc[eSrcUnit.value];
 	eSrcWidth.value = Math.round(sizeSrc.width * unit);
 	eSrcHeight.value = Math.round(sizeSrc.height * unit);
 }
